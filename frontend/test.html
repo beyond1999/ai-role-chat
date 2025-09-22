@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Avatar MVP</title>
+<style>
+  html,body { height:100%; margin:0; background:#111; color:#ddd; }
+  #app { position:fixed; inset:0; }
+  #log { position:fixed; left:8px; bottom:8px; font:12px/1.4 monospace; background:#0008; padding:6px 8px; border-radius:6px; }
+</style>
+<body>
+  <canvas id="app"></canvas>
+  <div id="log">boot…</div>
+
+  <script type="module">
+    const log = (...a)=>{ document.getElementById('log').textContent = a.join(' '); console.log(...a); };
+
+    // ✅ 用 CDN 模块完整 URL，而不是 "three"
+    const [{ default: THREE }, { GLTFLoader }] = await Promise.all([
+      import("https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"),
+      import("https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js"),
+    ]);
+    log("modules ok");
+
+    const canvas = document.getElementById('app');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
+    renderer.setSize(innerWidth, innerHeight);
+    addEventListener('resize', ()=>renderer.setSize(innerWidth, innerHeight));
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, .1, 100);
+    camera.position.set(0, 1.5, 3);
+    scene.add(new THREE.AmbientLight(0xffffff, .7));
+    const dir = new THREE.DirectionalLight(0xffffff, 1.2); dir.position.set(2,4,3); scene.add(dir);
+
+    // 旋转方块自测
+    const cube = new THREE.Mesh(
+      new THREE.BoxGeometry(0.5,0.5,0.5),
+      new THREE.MeshStandardMaterial({ color: 0x44aa88 })
+    );
+    cube.position.set(-1, 1.2, 0);
+    scene.add(cube);
+
+    // 加载 GLB（确保文件在 frontend/public/assets/avatar.glb）
+    const loader = new GLTFLoader();
+    loader.load(
+      "public/assets/avatar.glb",
+      (gltf)=>{
+        log("glb loaded");
+        const root = gltf.scene;
+        scene.add(root);
+        root.traverse(o=>{
+          if(o.isMesh && o.morphTargetDictionary){
+            console.log('morph keys of', o.name, Object.keys(o.morphTargetDictionary));
+            const dict = o.morphTargetDictionary, inf = o.morphTargetInfluences;
+            const key = Object.keys(dict).find(k=>/jawOpen|viseme|mouthOpen/i.test(k));
+            if(key) inf[dict[key]] = 0.7;
+          }
+        });
+      },
+      (ev)=>{ log(`loading ${(ev.loaded/ev.total*100||0).toFixed(0)}%`); },
+      (err)=>{ console.error(err); log("glb load error（看控制台）"); }
+    );
+
+    (function animate(){
+      requestAnimationFrame(animate);
+      cube.rotation.y += 0.01;
+      renderer.render(scene, camera);
+    })();
+  </script>
+</body>
+</html>

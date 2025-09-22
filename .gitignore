@@ -1,3 +1,21 @@
+###### user config ###### 
+
+# Ignore PyCharm/IntelliJ project files
+.idea/
+*.iml
+
+
+#python environment
+.venv/
+venv/
+.pip/
+env/
+
+# assets
+frontend/public/
+frontend/public/assets
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

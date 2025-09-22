@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8" />
+  <title>Three + GLTFLoader (import map)</title>
+  <style>
+    html,body { margin:0; height:100%; }
+    canvas { width:100%; height:100%; display:block; }
+    #log { position:fixed; left:8px; bottom:8px; font:12px/1.4 monospace; background:#0008; color:#fff; padding:6px 8px; border-radius:6px;}
+  </style>
+
+  <!-- 🔑 关键：告诉浏览器 “three” 和 “three/addons/” 分别对应到哪里 -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+<canvas id="app"></canvas>
+<div id="log">boot…</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+const log = (...a)=>{ const el=document.getElementById('log'); el.textContent=a.join(' '); console.log(...a); };
+
+// 基础场景
+const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('app'), antialias:true });
+renderer.setSize(innerWidth, innerHeight);
+addEventListener('resize', ()=>renderer.setSize(innerWidth, innerHeight));
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.1, 100);
+camera.position.set(0, 1.5, 3);
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+const dir = new THREE.DirectionalLight(0xffffff, 1.2); dir.position.set(2,4,3); scene.add(dir);
+
+// 自测方块
+const cube = new THREE.Mesh(
+  new THREE.BoxGeometry(),
+  new THREE.MeshStandardMaterial({ color: 0x44aa88 })
+);
+cube.position.set(-1, 1.2, 0);
+scene.add(cube);
+
+// 先探测模型直链是否能访问（避免 404/跨域）
+const url = 'public/assets/avatar.glb'; // 确保文件在 frontend/public/assets/avatar.glb
+try {
+  const head = await fetch(url, { method: 'HEAD' });
+  if (!head.ok) log(`模型可访问：${url} (HTTP ${head.status})`);
+  else log('modules ok, loading model…');
+} catch (e) {
+  log('⚠️ 无法访问模型直链（可能路径不对或被拦截）');
+}
+
+// 加载 GLB
+const loader = new GLTFLoader();
+loader.load(
+  url,
+  (gltf)=>{
+    log('✅ GLB loaded');
+    scene.add(gltf.scene);
+    gltf.scene.traverse(o=>{
+      if (o.isMesh && o.morphTargetDictionary) {
+        console.log('Morph keys of', o.name, Object.keys(o.morphTargetDictionary));
+      }
+    });
+  },
+  (ev)=>{ if (ev.total) log(`loading ${(ev.loaded/ev.total*100).toFixed(0)}%`); },
+  (err)=>{ console.error(err); log('❌ GLB load error（看控制台红字）'); }
+);
+
+(function animate(){
+  requestAnimationFrame(animate);
+  cube.rotation.y += 0.01;
+  renderer.render(scene, camera);
+})();
+</script>
+</body>
+</html>

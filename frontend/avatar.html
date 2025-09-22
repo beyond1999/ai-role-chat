@@ -1,0 +1,165 @@
+<!doctype html>
+<meta charset="utf-8"><title>MVP Avatar</title>
+<style>html, body, canvas {
+    margin: 0;
+    height: 100%;
+}</style>
+<canvas id="c"></canvas>
+<script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+</script>
+
+<script type="module">
+    import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
+    import {GLTFLoader} from "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
+
+
+    const renderer = new THREE.WebGLRenderer({canvas: document.getElementById('c'), antialias: true});
+    renderer.setSize(innerWidth, innerHeight);
+    addEventListener('resize', () => renderer.setSize(innerWidth, innerHeight));
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, .1, 100);
+    camera.position.set(0, 1.5, 2.2);
+    scene.add(new THREE.AmbientLight(0xffffff, .8));
+    const dir = new THREE.DirectionalLight(0xffffff, 1.6);
+    dir.position.set(2, 4, 3);
+    scene.add(dir);
+
+    const loader = new GLTFLoader();
+    loader.load("/public/assets/avatar.glb", (gltf) => {
+        scene.add(gltf.scene);
+
+        /**************** bone ******************/
+
+// —— 可视化骨骼，方便看轴向（调好后可删）
+//         const skinnedMesh = gltf.scene.getObjectByProperty('type', 'SkinnedMesh');
+//         if (skinnedMesh && skinnedMesh.skeleton) {
+//             const helper = new THREE.SkeletonHelper(gltf.scene);
+//             helper.material.linewidth = 2;
+//             scene.add(helper);
+//         }
+
+// —— 把常用骨骼取出来（按你打印出来的名字）
+        const bones = {
+            L: {
+                shoulder: gltf.scene.getObjectByName('LeftShoulder'),
+                arm: gltf.scene.getObjectByName('LeftArm'),
+                forearm: gltf.scene.getObjectByName('LeftForeArm'),
+                hand: gltf.scene.getObjectByName('LeftHand'),
+            },
+            R: {
+                shoulder: gltf.scene.getObjectByName('RightShoulder'),
+                arm: gltf.scene.getObjectByName('RightArm'),
+                forearm: gltf.scene.getObjectByName('RightForeArm'),
+                hand: gltf.scene.getObjectByName('RightHand'),
+            }
+        };
+
+// 小工具：度→弧度
+        const d2r = d => d * Math.PI / 180;
+
+// —— 设置手臂姿态（简单版：直接改欧拉角）
+// pitch: 绕X前后抬举（+前抬 / -后摆）；yaw: 绕Y水平外展；roll: 绕Z旋转
+        function setArmPose(side, {
+            shoulder = {pitch: 0, yaw: 0, roll: 0}, arm = {pitch: 0, yaw: 0, roll: 0},
+            forearm = {pitch: 0, yaw: 0, roll: 0}, hand = {pitch: 0, yaw: 0, roll: 0}
+        }) {
+            const b = bones[side];
+            if (!b) return;
+
+            if (b.shoulder) {
+                b.shoulder.rotation.set(d2r(shoulder.pitch), d2r(shoulder.yaw), d2r(shoulder.roll));
+            }
+            if (b.arm) {
+                b.arm.rotation.set(d2r(arm.pitch), d2r(arm.yaw), d2r(arm.roll));
+            }
+            if (b.forearm) {
+                b.forearm.rotation.set(d2r(forearm.pitch), d2r(forearm.yaw), d2r(forearm.roll));
+            }
+            if (b.hand) {
+                b.hand.rotation.set(d2r(hand.pitch), d2r(hand.yaw), d2r(hand.roll));
+            }
+        }
+
+// —— 示例：把左臂向前抬 60°，前臂再弯曲 40°；右臂侧平举 70°
+//         setArmPose('L', {
+//             shoulder: {pitch: 0, yaw: 0, roll: 0}, // 少量带动肩膀
+//             arm: {pitch: 0, yaw: 0, roll: 0}, // 上臂前抬
+//             forearm: {pitch: 0, yaw: 0, roll: 0}, // 前臂弯曲
+//             hand: {pitch: 0, yaw: 0, roll: 0},
+//         });
+//
+//         setArmPose('R', {
+//             shoulder: {pitch: 0, yaw: 10, roll: 0},
+//             arm: {pitch: 0, yaw: 0, roll: 0}, // 侧平举
+//             forearm: {pitch: 0, yaw: 0, roll: 0},
+//         });
+        /**************** bone ******************/
+
+            //眨眼
+        let eyeMeshes = []; // 保存带有眼睛 morph 的 mesh
+
+        // 打印可用的 morph target（嘴型/表情）
+        gltf.scene.traverse(o => {
+            if (o.isMesh && o.morphTargetDictionary) {
+                console.log('mesh:', o.name, Object.keys(o.morphTargetDictionary));
+                // 尝试推一个“张嘴”键：常见名字 jawOpen / viseme_AA / mouthOpen
+                const dict = o.morphTargetDictionary, inf = o.morphTargetInfluences;
+                const key = Object.keys(dict).find(k => /jawOpen|viseme_AA|mouthOpen/i.test(k));
+                if (key) inf[dict[key]] = 0.7; // 看到嘴张开，证明可驱动
+                // 嘴张开
+                // 打印骨骼名字
+                // gltf.scene.traverse(o => {
+                //     if (o.isBone) {
+                //         console.log("骨骼:", o.name);
+                //     }
+                // });
+
+                if (dict['jawOpen'] !== undefined) {
+                    inf[dict['jawOpen']] = 0.8;
+                }
+
+                // 左眼闭
+                if (dict['eyeBlink_L'] !== undefined) {
+                    inf[dict['eyeBlink_L']] = 1.0;
+                }
+            }
+        });
+
+        // 眨眼
+        // 定义眨眼函数
+        function blink() {
+            eyeMeshes.forEach(({dict, inf}) => {
+                if (dict['eyeBlink_L'] !== undefined) inf[dict['eyeBlink_L']] = 1.0;
+                if (dict['eyeBlink_R'] !== undefined) inf[dict['eyeBlink_R']] = 1.0;
+            });
+
+            // 200 毫秒后张开眼睛
+            setTimeout(() => {
+                eyeMeshes.forEach(({dict, inf}) => {
+                    if (dict['eyeBlink_L'] !== undefined) inf[dict['eyeBlink_L']] = 0.0;
+                    if (dict['eyeBlink_R'] !== undefined) inf[dict['eyeBlink_R']] = 0.0;
+                });
+            }, 200);
+        }
+
+        // 每隔 3~6 秒随机眨一次
+        setInterval(() => {
+            blink();
+        }, 3000 + Math.random() * 3000);
+
+
+        animate();
+    });
+
+    function animate() {
+        requestAnimationFrame(animate);
+        renderer.render(scene, camera);
+    }
+</script>
