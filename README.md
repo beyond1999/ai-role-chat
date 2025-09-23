@@ -19,3 +19,12 @@ AI role-play voice chat demo for Qiniu Cloud 2026 campus recruiting
 - [ ] 接入 ASR 模块
 - [ ] 接入 LLM 模块
 - [ ] 接入 TTS 模块
+```commandline
+# linux
+source venv/bin/activate
+
+# windows
+venv/Script/activate
+
+python -m http.server 8000
+```

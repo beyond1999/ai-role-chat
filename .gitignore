@@ -7,6 +7,8 @@
 
 #python environment
 .venv/
+.venv-*/
+venv-*/
 venv/
 .pip/
 env/
@@ -14,6 +16,10 @@ env/
 # assets
 frontend/public/
 frontend/public/assets
+data/
+
+#models
+models/
 
 
 # Byte-compiled / optimized / DLL files
