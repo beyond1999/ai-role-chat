@@ -4,3 +4,4 @@ soundfile
 ffmpeg-python
 numpy
 fastapi
+uvicorn

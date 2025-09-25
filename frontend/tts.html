@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TTS Playground · Edge / Piper</title>
+  <style>
+    :root { --bg:#0b0f14; --panel:#111723; --muted:#6b778a; --acc:#4da3ff; --ok:#36c; --err:#e74c3c; }
+    *{ box-sizing:border-box; }
+    html,body{ height:100%; }
+    body{ margin:0; background:linear-gradient(180deg,#0b0f14,#0a0e13); color:#e6eef6; font:14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, "PingFang SC", sans-serif; }
+    .wrap{ max-width:980px; margin:24px auto; padding:0 16px; }
+    h1{ margin:0 0 8px; font-size:20px; }
+    .grid{ display:grid; gap:12px; grid-template-columns: repeat(12,1fr); }
+    .card{ background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:14px; padding:14px; box-shadow: 0 8px 24px rgba(0,0,0,.25); }
+    label{ display:block; font-size:12px; color:#a8b2c1; margin-bottom:6px; }
+    input[type="text"], select, textarea{ width:100%; padding:10px 12px; border:1px solid rgba(255,255,255,.12); border-radius:10px; background:#0f1520; color:#e6eef6; outline:none; }
+    input[type="text"]:focus, select:focus, textarea:focus{ border-color:#4da3ff; box-shadow:0 0 0 3px rgba(77,163,255,.15); }
+    textarea{ min-height:120px; resize:vertical; }
+    .row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .btn{ appearance:none; border:0; padding:10px 14px; border-radius:12px; background:#1b2330; color:#e6eef6; cursor:pointer; transition:.2s; }
+    .btn:hover{ transform:translateY(-1px); background:#223041; }
+    .btn.primary{ background:#2262a9; }
+    .btn.primary:hover{ background:#2873c7; }
+    .btn.danger{ background:#6b1c1c; }
+    .btn.danger:hover{ background:#812121; }
+    .muted{ color:#9aa6b2; }
+    .pill{ padding:4px 8px; border-radius:999px; background:#0f1520; border:1px solid rgba(255,255,255,.08); font-size:12px; }
+    .status{ font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .hidden{ display:none; }
+    .footer{ margin-top:14px; color:#7f8a99; font-size:12px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>TTS Playground <span class="muted">· Edge / Piper</span></h1>
+
+    <div class="grid" style="margin-top:12px;">
+      <div class="card" style="grid-column: span 12;">
+        <div class="row" style="gap:12px; align-items:flex-end;">
+          <div style="flex:1; min-width:220px;">
+            <label>文本（要合成的内容）</label>
+            <textarea id="textIn" placeholder="输入要朗读的文本…">你好，这是一段 TTS 测试，我们支持 Edge（云端）和 Piper（离线）两种方案。</textarea>
+          </div>
+          <div style="width:260px;">
+            <label>选择引擎</label>
+            <select id="engineSel">
+              <option value="edge">edge-tts（云端）</option>
+              <option value="piper">piper（离线，本地）</option>
+              <option value="xtts" disabled>XTTS（few-shot，待接入）</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="grid-column: span 12;">
+        <div class="row" style="gap:12px;">
+          <div style="flex:1; min-width:220px;">
+            <label>Edge TTS 基址（含端口）</label>
+            <input id="edgeBase" type="text" value="http://localhost:8001" />
+          </div>
+          <div style="flex:1; min-width:220px;">
+            <label>Piper 基址（含端口）</label>
+            <input id="piperBase" type="text" value="http://localhost:8002" />
+          </div>
+          <div style="flex:0 0 auto; align-self:flex-end;">
+            <button class="btn" id="btnCheck">健康检查</button>
+          </div>
+        </div>
+        <div id="healthMsg" class="status" style="margin-top:8px;">未检查</div>
+      </div>
+
+      <!-- Edge 参数区 -->
+      <div id="edgePanel" class="card" style="grid-column: span 12;">
+        <div class="row" style="gap:12px;">
+          <div style="width:240px;">
+            <label>预设（角色风格）</label>
+            <select id="presetSel">
+              <option value="">（不使用预设）</option>
+            </select>
+          </div>
+          <div style="width:260px;">
+            <label>Voice（覆盖预设）</label>
+            <input id="voiceIn" type="text" placeholder="如 en-US-GuyNeural / zh-CN-YunxiNeural" />
+          </div>
+          <div style="width:140px;">
+            <label>Rate</label>
+            <input id="rateIn" type="text" value="+0%" />
+          </div>
+          <div style="width:140px;">
+            <label>Pitch</label>
+            <input id="pitchIn" type="text" value="+0Hz" />
+          </div>
+          <div style="width:140px;">
+            <label>Volume</label>
+            <input id="volIn" type="text" value="+0%" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Piper 参数区（目前最简：只要文本） -->
+      <div id="piperPanel" class="card hidden" style="grid-column: span 12;">
+        <div class="row" style="gap:12px; align-items:flex-end;">
+          <div class="muted">Piper 将使用后端默认的模型与音色（/tts_piper）。如需选择不同音色，可在后端为不同模型暴露不同的路由或在请求体中增加模型参数。</div>
+        </div>
+      </div>
+
+      <div class="card" style="grid-column: span 12;">
+        <div class="row" style="gap:10px;">
+          <button class="btn primary" id="btnSpeak">Speak</button>
+          <button class="btn danger" id="btnStop">Stop</button>
+          <span class="pill status" id="status">Idle</span>
+        </div>
+        <div class="footer">提示：该页面为静态前端，可用 PyCharm 内置服务器（63342）或 <code>python -m http.server</code> 启动。跨端口访问需要后端已正确配置 CORS。</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const $ = (id)=>document.getElementById(id);
+
+    const state = {
+      audio: null,
+      aborter: null,
+      presets: {},
+    };
+
+    function setStatus(msg){ $("status").textContent = msg; }
+    function show(el, yes){ el.classList.toggle('hidden', !yes); }
+
+    function onEngineChanged(){
+      const eng = $("engineSel").value;
+      show($("edgePanel"), eng === 'edge');
+      show($("piperPanel"), eng === 'piper');
+    }
+
+    async function checkHealth(){
+      const edgeBase = $("edgeBase").value.trim();
+      const piperBase = $("piperBase").value.trim();
+      async function ping(base){
+        try{ const r = await fetch(base + '/health', { cache:'no-store' }); return r.ok ? 'OK' : ('HTTP '+r.status); }
+        catch(e){ return 'ERR'; }
+      }
+      const [e, p] = await Promise.all([ping(edgeBase), ping(piperBase)]);
+      $("healthMsg").textContent = `edge @ ${edgeBase} => ${e} | piper @ ${piperBase} => ${p}`;
+
+      // 预设刷新
+      try{
+        const r = await fetch(edgeBase + '/tts_presets', { cache:'no-store' });
+        if (r.ok){ state.presets = await r.json(); fillPresets(state.presets); }
+      }catch{}
+    }
+
+    function fillPresets(map){
+      const sel = $("presetSel");
+      sel.innerHTML = '<option value="">（不使用预设）</option>';
+      Object.keys(map).forEach(k=>{
+        const opt = document.createElement('option');
+        opt.value = k; opt.textContent = `${k}  ·  ${map[k].voice || ''}`;
+        sel.appendChild(opt);
+      });
+    }
+
+    function stopSpeak(){
+      try{ if (state.aborter){ state.aborter.abort(); } } catch {}
+      state.aborter = null;
+      if (state.audio){
+        state.audio.pause();
+        if (state.audio.src && state.audio.src.startsWith('blob:')) URL.revokeObjectURL(state.audio.src);
+      }
+      state.audio = null;
+      setStatus('Stopped');
+    }
+
+    function playBlob(buf, mime){
+      const url = URL.createObjectURL(new Blob([buf], { type: mime }));
+      const audio = new Audio(url);
+      state.audio = audio;
+      audio.onended = ()=>{ URL.revokeObjectURL(url); state.audio=null; setStatus('Idle'); };
+      audio.play();
+    }
+
+    async function speak(){
+      const text = $("textIn").value.trim();
+      if (!text){ alert('请输入文本'); return; }
+      stopSpeak();
+
+      const engine = $("engineSel").value;
+      const edgeBase = $("edgeBase").value.trim();
+      const piperBase = $("piperBase").value.trim();
+      state.aborter = new AbortController();
+      setStatus('Synthesizing…');
+
+      try{
+        if (engine === 'edge'){
+          const body = {
+            text,
+            preset: $("presetSel").value || null,
+            voice: $("voiceIn").value || undefined,
+            rate: $("rateIn").value || undefined,
+            pitch: $("pitchIn").value || undefined,
+            volume: $("volIn").value || undefined,
+            fmt: 'audio-24khz-48kbitrate-mono-mp3',
+          };
+          const r = await fetch(edgeBase + '/tts_edge_tts', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify(body), signal: state.aborter.signal,
+          });
+          if (!r.ok) throw new Error('HTTP '+r.status);
+          const buf = await r.arrayBuffer();
+          playBlob(buf, 'audio/mpeg');
+          setStatus('Playing (edge)');
+        }
+        else if (engine === 'piper'){
+          const r = await fetch(piperBase + '/tts_piper', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ text }), signal: state.aborter.signal,
+          });
+          if (!r.ok) throw new Error('HTTP '+r.status);
+          const buf = await r.arrayBuffer();
+          playBlob(buf, 'audio/wav');
+          setStatus('Playing (piper)');
+        }
+        else {
+          alert('该引擎暂未接入');
+          setStatus('Idle');
+        }
+      }catch(err){
+        if (err.name === 'AbortError'){ setStatus('Aborted'); return; }
+        console.error(err);
+        setStatus('Error');
+        alert('TTS 调用失败：' + err.message);
+      }
+    }
+
+    // 初始事件绑定
+    $("engineSel").addEventListener('change', onEngineChanged);
+    $("btnSpeak").addEventListener('click', speak);
+    $("btnStop").addEventListener('click', stopSpeak);
+    $("btnCheck").addEventListener('click', checkHealth);
+
+    // 初始 UI 设置
+    onEngineChanged();
+    checkHealth();
+  </script>
+</body>
+</html>

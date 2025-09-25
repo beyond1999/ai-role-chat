@@ -6,7 +6,7 @@ import uuid
 
 from backend.asr.asr import transcribe
 from chat import chat_with_role
-from tts import synthesize
+from backend.asr.tts import synthesize
 
 app = FastAPI()
 

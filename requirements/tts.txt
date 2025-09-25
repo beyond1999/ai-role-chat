@@ -2,3 +2,6 @@ piper-tts
 sounddevice
 soundfile
 numpy
+edge-tts
+fastapi
+uvicorn
