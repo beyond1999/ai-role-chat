@@ -1,11 +1,5 @@
-可以！我给你两套“可复制”的方案：
+# environment
 
-* 方案 A：**WSL 一键脚本**（不装 Toolkit，直接用 WSL 自带 CUDA 12.x runtime）
-* 方案 B：**Docker 部署**（上服务器一把梭，跑哪都一致）
-
-你挑一个用，或者两个都留着。
-
----
 
 # 方案 A｜WSL 一键脚本（最贴合你现在的环境）
 
@@ -256,6 +250,4 @@ services:
 * **cuDNN**：Whisper 以 GEMM 为主，cuDNN 加速有限；不稳定可临时关：`CT2_USE_CUDNN=0`。
 * **日志**：卡住时用 `CT2_VERBOSE=1` 或 `LD_DEBUG=libs` 快速定位。
 
----
-
-需要我把这些文件（脚本 + Dockerfile + asr.py）打成一个最小模板目录结构发你？你直接复制到项目根就能用。
+watch -n 0.1 nvidia-smi

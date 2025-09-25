@@ -3,3 +3,4 @@ sounddevice
 soundfile
 ffmpeg-python
 numpy
+fastapi

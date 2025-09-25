@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8" />
+  <title>Streaming ASR Demo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue"; margin: 20px; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+    button { padding: 8px 12px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .status { padding: 4px 8px; border-radius: 6px; background: #f5f5f5; display: inline-block; }
+    .panel { border: 1px solid #eee; border-radius: 10px; padding: 12px; margin-top: 10px; }
+    .final { white-space: pre-wrap; line-height: 1.6; }
+    code { background: #f6f8fa; padding: 2px 6px; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <h1>Realtime ASR (WebSocket → faster-whisper)</h1>
+
+  <div class="row">
+    <label>WS 地址：</label>
+    <input id="wsUrl" size="40" value="ws://localhost:8000/ws" />
+    <button id="connectBtn">连接</button>
+    <button id="disconnectBtn" disabled>断开</button>
+    <span class="status" id="wsStatus">未连接</span>
+  </div>
+
+  <div class="row">
+    <button id="startBtn" disabled>开始麦克风</button>
+    <button id="stopBtn" disabled>停止麦克风</button>
+    <span class="status" id="audioStatus">麦克风未启用</span>
+  </div>
+
+  <div class="panel">
+    <h3>Partial（滚动字幕）</h3>
+    <div id="partialText">（等待识别中…）</div>
+  </div>
+
+  <div class="panel">
+    <h3>Final（定稿）</h3>
+    <div id="finalText" class="final"></div>
+  </div>
+
+  <script>
+    // ========== 工具：下采样到 16kHz + Float32 → Int16 ==========
+    function downsampleTo16kHz(float32, inSampleRate) {
+      const outSampleRate = 16000;
+      if (inSampleRate === outSampleRate) return float32;
+      const ratio = inSampleRate / outSampleRate;
+      const newLen = Math.floor(float32.length / ratio);
+      const result = new Float32Array(newLen);
+      let offsetResult = 0;
+      let offsetBuffer = 0;
+      while (offsetResult < newLen) {
+        const nextOffsetBuffer = Math.floor((offsetResult + 1) * ratio);
+        let acc = 0, count = 0;
+        for (let i = offsetBuffer; i < nextOffsetBuffer && i < float32.length; i++) {
+          acc += float32[i];
+          count++;
+        }
+        result[offsetResult] = acc / (count || 1);
+        offsetResult++;
+        offsetBuffer = nextOffsetBuffer;
+      }
+      return result;
+    }
+
+    function floatTo16BitPCM(float32) {
+      const buffer = new ArrayBuffer(float32.length * 2);
+      const view = new DataView(buffer);
+      let offset = 0;
+      for (let i = 0; i < float32.length; i++, offset += 2) {
+        let s = Math.max(-1, Math.min(1, float32[i]));
+        view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+      }
+      return buffer; // ArrayBuffer (little-endian)
+    }
+
+    // ========== 全局状态 ==========
+    let ws = null;
+    let audioContext = null;
+    let mediaStream = null;
+    let workletNode = null;
+    let micStarted = false;
+    let sendBuffer = new Float32Array(0); // 发送聚合缓冲
+    const FRAME_SAMPLES_20MS = 320; // 16kHz * 0.02s
+
+    const els = {
+      wsUrl: document.getElementById('wsUrl'),
+      connectBtn: document.getElementById('connectBtn'),
+      disconnectBtn: document.getElementById('disconnectBtn'),
+      wsStatus: document.getElementById('wsStatus'),
+      startBtn: document.getElementById('startBtn'),
+      stopBtn: document.getElementById('stopBtn'),
+      audioStatus: document.getElementById('audioStatus'),
+      partialText: document.getElementById('partialText'),
+      finalText: document.getElementById('finalText'),
+    };
+
+    function setWSStatus(txt) { els.wsStatus.textContent = txt; }
+    function setAudioStatus(txt) { els.audioStatus.textContent = txt; }
+
+    // ========== WebSocket ==========
+    function connectWS() {
+      if (ws && ws.readyState === WebSocket.OPEN) return;
+      ws = new WebSocket(els.wsUrl.value);
+      ws.binaryType = "arraybuffer";
+
+      ws.onopen = () => {
+        setWSStatus('已连接');
+        els.connectBtn.disabled = true;
+        els.disconnectBtn.disabled = false;
+        els.startBtn.disabled = false;
+        // 发送配置
+        ws.send(JSON.stringify({ op: "config", sampleRate: 16000 }));
+      };
+
+      ws.onmessage = (ev) => {
+        try {
+          const msg = JSON.parse(ev.data);
+          if (msg.type === 'partial') {
+            els.partialText.textContent = msg.text || '';
+          } else if (msg.type === 'final') {
+            if (msg.text) {
+              // 追加显示
+              els.finalText.textContent += (msg.text + "\n");
+              // els.finalText.textContent = (msg.text + "\n");
+              els.partialText.textContent = '';
+            }
+          } else if (msg.type === 'warning') {
+            console.warn('Server warning:', msg.message);
+          }
+        } catch (e) {
+          // 非 JSON 忽略
+        }
+      };
+
+      ws.onclose = () => {
+        setWSStatus('已断开');
+        els.connectBtn.disabled = false;
+        els.disconnectBtn.disabled = true;
+        els.startBtn.disabled = true;
+        stopMic();
+      };
+
+      ws.onerror = (e) => {
+        console.error('WS error', e);
+      };
+    }
+
+    function disconnectWS() {
+      if (ws) {
+        try { ws.close(); } catch (_) {}
+        ws = null;
+      }
+    }
+
+    // ========== 音频链路（AudioWorklet，把音频块抛回主线程） ==========
+    async function startMic() {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        alert('请先连接 WebSocket');
+        return;
+      }
+      if (micStarted) return;
+
+      mediaStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          noiseSuppression: true,
+          echoCancellation: true,
+          autoGainControl: true,
+          sampleRate: 48000, // 浏览器实际可能不同，以 AudioContext 为准
+        },
+        video: false
+      });
+
+      audioContext = new AudioContext();
+      // inline 注入一个 AudioWorklet 处理器
+      const workletCode = `
+        class PCMWorkletProcessor extends AudioWorkletProcessor {
+          process(inputs, outputs, parameters) {
+            const input = inputs[0];
+            if (input && input[0]) {
+              const ch0 = input[0];
+              // 若多声道，做简单混合
+              let mono = ch0;
+              if (input.length > 1 && input[1]) {
+                const len = ch0.length;
+                mono = new Float32Array(len);
+                for (let i = 0; i < len; i++) {
+                  mono[i] = (input[0][i] + input[1][i]) * 0.5;
+                }
+              }
+              this.port.postMessage(mono, [mono.buffer]);
+            }
+            return true;
+          }
+        }
+        registerProcessor('pcm-worklet', PCMWorkletProcessor);
+      `;
+      const blob = new Blob([workletCode], { type: 'application/javascript' });
+      const url = URL.createObjectURL(blob);
+      await audioContext.audioWorklet.addModule(url);
+
+      const source = audioContext.createMediaStreamSource(mediaStream);
+      workletNode = new AudioWorkletNode(audioContext, 'pcm-worklet');
+      workletNode.port.onmessage = (ev) => {
+        const block = ev.data; // Float32Array @ audioContext.sampleRate
+        handleAudioBlock(block, audioContext.sampleRate);
+      };
+      source.connect(workletNode);
+      workletNode.connect(audioContext.destination); // 如不想直出到扬声器，可改为不连接 destination
+
+      micStarted = true;
+      els.startBtn.disabled = true;
+      els.stopBtn.disabled = false;
+      setAudioStatus(`麦克风采集中 @ ${audioContext.sampleRate} Hz`);
+    }
+
+    function stopMic() {
+      if (!micStarted) return;
+      try {
+        if (workletNode) {
+          workletNode.disconnect();
+          workletNode.port.onmessage = null;
+          workletNode = null;
+        }
+        if (audioContext) {
+          audioContext.close();
+          audioContext = null;
+        }
+        if (mediaStream) {
+          mediaStream.getTracks().forEach(t => t.stop());
+          mediaStream = null;
+        }
+      } catch (_) {}
+      micStarted = false;
+      els.startBtn.disabled = !ws || ws.readyState !== WebSocket.OPEN;
+      els.stopBtn.disabled = true;
+      setAudioStatus('麦克风未启用');
+      sendBuffer = new Float32Array(0);
+    }
+
+    function handleAudioBlock(blockF32, inSR) {
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      const ds = downsampleTo16kHz(blockF32, inSR);
+
+      // 聚合（等够 20ms 再发，降低包数量）
+      const tmp = new Float32Array(sendBuffer.length + ds.length);
+      tmp.set(sendBuffer, 0);
+      tmp.set(ds, sendBuffer.length);
+      sendBuffer = tmp;
+
+      while (sendBuffer.length >= FRAME_SAMPLES_20MS) {
+        const frame = sendBuffer.slice(0, FRAME_SAMPLES_20MS);
+        sendBuffer = sendBuffer.slice(FRAME_SAMPLES_20MS);
+        const ab = floatTo16BitPCM(frame);
+        ws.send(ab);
+      }
+    }
+
+    // ========== 绑定 UI ==========
+    els.connectBtn.onclick = connectWS;
+    els.disconnectBtn.onclick = disconnectWS;
+    els.startBtn.onclick = startMic;
+    els.stopBtn.onclick = stopMic;
+
+    // 小贴士：用 http 方式打开（如 VSCode Live Server），避免 file:// 导致权限/跨域问题
+  </script>
+</body>
+</html>

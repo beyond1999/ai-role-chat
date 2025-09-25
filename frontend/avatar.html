@@ -32,7 +32,9 @@
     scene.add(dir);
 
     const loader = new GLTFLoader();
-    loader.load("/public/assets/avatar.glb", (gltf) => {
+    const url = 'public/assets/avatar.glb'; // 确保文件在 frontend/public/assets/avatar.glb
+    loader.load(url, (gltf) => {
+        console.log('✅ GLB loaded');
         scene.add(gltf.scene);
 
         /**************** bone ******************/

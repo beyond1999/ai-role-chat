@@ -4,7 +4,7 @@ from fastapi.responses import FileResponse, JSONResponse
 import os
 import uuid
 
-from asr import transcribe
+from backend.asr.asr import transcribe
 from chat import chat_with_role
 from tts import synthesize
 
