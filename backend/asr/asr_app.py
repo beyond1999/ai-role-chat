@@ -8,6 +8,8 @@ from faster_whisper import WhisperModel
 import uvicorn
 import json
 import aiohttp
+import hashlib, uuid
+SESSION_ID = "sess-" + uuid.uuid4().hex[:8]
 
 # =========================
 # 配置
@@ -150,11 +152,25 @@ class Session:
 async def ws_asr(ws: WebSocket):
     await ws.accept()
     sess = Session()
-    async def push_to_webhook(final_text: str):
-        async with aiohttp.ClientSession() as session:
-            async with session.post(POST_TO_LLM_URL, json={"text": final_text}) as resp:
-                result = await resp.json()
-                print(f"[ASR 模块] 推送结果: {result}")
+    session_id = 0 # todo
+    # async def push_to_webhook(final_text: str):
+    #     async with aiohttp.ClientSession() as session:
+    #         async with session.post(POST_TO_LLM_URL, json={"text": final_text, "session_id": session_id}) as resp:
+    #             result = await resp.json()
+    #             print(f"[ASR 模块] 推送结果: {result}")
+    async def push_to_webhook(final_text: str, language=None, avg_logprob=None, segments=None):
+        idem = f"{SESSION_ID}:{hashlib.sha1(final_text.encode('utf-8')).hexdigest()}"
+        payload = {
+            "text": final_text,
+            "session_id": SESSION_ID,
+            "language": language,
+            "avg_logprob": avg_logprob,
+            "segments": segments,   # 你已有的 seg_ts 可直接传
+        }
+        async with aiohttp.ClientSession() as s:
+            async with s.post(POST_TO_LLM_URL, json=payload,
+                            headers={"X-Idempotency-Key": idem}) as r:
+                print("[ASR] 推送结果:", await r.text())
 
     # ---- 接收端：读取 config + 连续 PCM 帧 ----
     async def receiver():
@@ -208,6 +224,31 @@ async def ws_asr(ws: WebSocket):
                 now_ms += tick_ms
 
                 audio = sess.snapshot()
+                ###########################防重复######################################
+
+                # 当前位置对应的全局起点（snapshot里第一帧在全局的下标）
+                current_total = sess.total_samples
+                if audio is None:
+                    continue
+                snapshot_start_global = current_total - len(audio)
+
+                # 只解码 last_final_offset 之后的音频；留一点重叠避免边界截断
+                OVERLAP_S = 0.20  # 200ms
+                slice_start = max(0, int(sess.last_final_offset - snapshot_start_global))
+                slice_start = max(0, slice_start - int(OVERLAP_S * SAMPLE_RATE))
+
+                audio_feed = audio[slice_start:]
+                if len(audio_feed) < SAMPLE_RATE * 0.3:
+                    continue
+
+                # 如果你还想限制窗口大小（比如8秒），在 feed 上再截一次
+                if DECODE_WINDOW_SECONDS is not None:
+                    max_len = int(SAMPLE_RATE * DECODE_WINDOW_SECONDS)
+                    if len(audio_feed) > max_len:
+                        audio_feed = audio_feed[-max_len:]
+                        # 若做了末尾截断，slice_start 也要相应移动到 snapshot 内的实际起点
+                        slice_start = len(audio) - len(audio_feed)
+                ############################防重复#####################################
                 if audio is None or len(audio) < SAMPLE_RATE * 0.3:   # 少于0.3秒就先不跑
                     continue
 
@@ -223,7 +264,7 @@ async def ws_asr(ws: WebSocket):
 
                 # whisper 解码
                 segments, info = model.transcribe(
-                    audio,
+                    audio_feed,
                     language=LANGUAGE,
                     beam_size=BEAM_SIZE,
                     vad_filter=USE_VAD,
@@ -258,8 +299,21 @@ async def ws_asr(ws: WebSocket):
                     is_silence=is_silence,
                     tick_ms=tick_ms
                 )
-
+                
                 if should_final and final_text:
+                    # 幂等保险：同一句在短时间内不重复推送
+                    if final_text == sess.last_final_text:
+                        # 已经推过，忽略这次
+                        continue
+                    sess.last_final_text = final_text
+                    # 根据最后一个 segment 的结束时间推进“全局消费”游标
+                    if seg_ts:
+                        last_end_s = seg_ts[-1][1]                         # 这次 feed 内的结束秒
+                        end_in_feed = int(last_end_s * SAMPLE_RATE)        # 转帧
+                        # snapshot 的全局起点 + 本次 feed 在 snapshot 内的起点 + 结束偏移
+                        sess.last_final_offset = (
+                            snapshot_start_global + slice_start + end_in_feed
+                        )
                     await ws.send_text(json.dumps({
                         "type": "final",
                         "text": final_text,
