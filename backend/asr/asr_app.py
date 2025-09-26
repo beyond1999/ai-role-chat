@@ -7,7 +7,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from faster_whisper import WhisperModel
 import uvicorn
 import json
-from backend.llm.llm import
+import aiohttp
 
 # =========================
 # 配置
@@ -32,6 +32,8 @@ STABLE_NOCHANGE_MS = 1500               # 文本在这么久没有变化 -> 也f
 SILENCE_RMS_THRESH = 0.005              # 静音阈值（RMS），按需微调
 SILENCE_WINDOW_MS = 300                 # 静音判定看最近这段音频
 END_PUNCTS = set("。.!！？?")
+POST_TO_LLM_URL = "http://127.0.0.1:8001/receive_text"  # 指向 llm.py
+
 # =========================
 # 模型初始化（进程级别只加载一次）
 # =========================
@@ -122,12 +124,15 @@ class Session:
         self.ring: Deque[float] = deque(maxlen=sample_rate * RING_SECONDS)
         self._closed = False
         self.last_partial_text: str = ""      # 上次发给前端的 partial，做去抖
-        self.last_final_offset: int = 0       # 记录已“最终化”的样本帧数（可选）
+        self.last_final_offset: int = 0       # ← 全局“已消费”到哪一帧
+        self.total_samples: int = 0          # ← 全局已写入的帧数（新增）
+        self.last_final_text: str = ""       # ← 幂等：最近一次final文本（新增）
 
     def add_pcm_i16(self, pcm_i16: bytes):
         # bytes -> int16 -> float32 [-1, 1]
         x = np.frombuffer(pcm_i16, dtype=np.int16).astype(np.float32) / 32768.0
         self.ring.extend(x.tolist())
+        self.total_samples += len(x)
 
     def snapshot(self) -> Optional[np.ndarray]:
         """取一个快照，避免边收边解读造成的数据抖动。"""
@@ -145,6 +150,11 @@ class Session:
 async def ws_asr(ws: WebSocket):
     await ws.accept()
     sess = Session()
+    async def push_to_webhook(final_text: str):
+        async with aiohttp.ClientSession() as session:
+            async with session.post(POST_TO_LLM_URL, json={"text": final_text}) as resp:
+                result = await resp.json()
+                print(f"[ASR 模块] 推送结果: {result}")
 
     # ---- 接收端：读取 config + 连续 PCM 帧 ----
     async def receiver():
