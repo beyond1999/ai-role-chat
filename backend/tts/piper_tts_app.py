@@ -40,39 +40,7 @@ def health():
     print(ok)
     return {"ok": ok}
 
-# @app.post("/tts_piper")
-# def tts_piper(
-#     text: str = Body(..., embed=True),
-#     model: str | None = Body(None),   # 可选：动态指定模型 .onnx
-#     cfg:   str | None = Body(None),   # 可选：对应 .onnx.json
-#     # 还可以加 speed / length_scale 等，但 piper CLI 参数较少，这里保持最小
-# ):
-#     mdl = model or PIPER_MODEL
 
-#     cfgp = cfg or PIPER_CFG
-#     _check_ready(mdl, cfgp)
-
-#     def run():
-#         # -f - 输出到 stdout；文本从 stdin 写入
-#         p = subprocess.Popen(
-#             [PIPER_BIN, "-m", mdl, "-c", cfgp, "-f", "-"],
-#             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0
-#         )
-#         try:
-#             p.stdin.write((text + "\n").encode("utf-8"))
-#             p.stdin.close()
-#         except Exception:
-#             print(Exception)
-#         print(111)
-#         while True:
-#             chunk = p.stdout.read(4096)
-#             if not chunk:
-#                 break
-#             yield chunk
-#         p.wait()
-
-#     # Piper 默认输出 WAV（单声道、22.05kHz/24kHz 视模型而定）
-#     return StreamingResponse(run(), media_type="audio/wav")
 
 
 @app.post("/tts_piper")
