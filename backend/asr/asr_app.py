@@ -153,24 +153,24 @@ async def ws_asr(ws: WebSocket):
     await ws.accept()
     sess = Session()
     session_id = 0 # todo
-    # async def push_to_webhook(final_text: str):
-    #     async with aiohttp.ClientSession() as session:
-    #         async with session.post(POST_TO_LLM_URL, json={"text": final_text, "session_id": session_id}) as resp:
-    #             result = await resp.json()
-    #             print(f"[ASR 模块] 推送结果: {result}")
-    async def push_to_webhook(final_text: str, language=None, avg_logprob=None, segments=None):
-        idem = f"{SESSION_ID}:{hashlib.sha1(final_text.encode('utf-8')).hexdigest()}"
-        payload = {
-            "text": final_text,
-            "session_id": SESSION_ID,
-            "language": language,
-            "avg_logprob": avg_logprob,
-            "segments": segments,   # 你已有的 seg_ts 可直接传
-        }
-        async with aiohttp.ClientSession() as s:
-            async with s.post(POST_TO_LLM_URL, json=payload,
-                            headers={"X-Idempotency-Key": idem}) as r:
-                print("[ASR] 推送结果:", await r.text())
+    async def push_to_webhook(final_text: str):
+        async with aiohttp.ClientSession() as session:
+            async with session.post(POST_TO_LLM_URL, json={"text": final_text, "session_id": session_id}) as resp:
+                result = await resp.json()
+                print(f"[ASR 模块] 推送结果: {result}")
+    # async def push_to_webhook(final_text: str, language=None, avg_logprob=None, segments=None):
+    #     idem = f"{SESSION_ID}:{hashlib.sha1(final_text.encode('utf-8')).hexdigest()}"
+    #     payload = {
+    #         "text": final_text,
+    #         "session_id": SESSION_ID,
+    #         "language": language,
+    #         "avg_logprob": avg_logprob,
+    #         "segments": segments,   # 你已有的 seg_ts 可直接传
+    #     }
+    #     async with aiohttp.ClientSession() as s:
+    #         async with s.post(POST_TO_LLM_URL, json=payload,
+    #                         headers={"X-Idempotency-Key": idem}) as r:
+    #             print("[ASR] 推送结果:", await r.text())
 
     # ---- 接收端：读取 config + 连续 PCM 帧 ----
     async def receiver():
