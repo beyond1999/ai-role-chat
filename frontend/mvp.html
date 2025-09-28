@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>千问助手 Demo</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #fff;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+    #chat {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1rem;
+    }
+    .bubble {
+      max-width: 70%;
+      padding: 0.6rem 0.9rem;
+      border-radius: 12px;
+      margin-bottom: 0.8rem;
+      position: relative;
+      display: inline-block;
+      word-wrap: break-word;
+    }
+    .user {
+      background: #007bff;
+      color: white;
+      align-self: flex-end;
+      border-bottom-right-radius: 2px;
+    }
+    .assistant {
+      background: #eee;
+      color: #333;
+      align-self: flex-start;
+      border-bottom-left-radius: 2px;
+    }
+    .row {
+      display: flex;
+      align-items: flex-end;
+      margin: 0.5rem 0;
+    }
+    .row.user {
+      justify-content: flex-end;
+    }
+    .avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: #ccc;
+      margin: 0 0.5rem;
+    }
+    .avatar.user {
+      background: #007bff;
+    }
+    .avatar.assistant {
+      background: #999;
+    }
+    .speak-btn {
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+      margin-left: 0.4rem;
+    }
+    #input-area {
+      display: flex;
+      padding: 0.5rem;
+      border-top: 1px solid #ddd;
+    }
+    #input {
+      flex: 1;
+      padding: 0.5rem;
+      font-size: 1rem;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      outline: none;
+    }
+    #mic, #send {
+      background: #007bff;
+      color: white;
+      border: none;
+      padding: 0 1rem;
+      margin-left: 0.4rem;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div id="chat"></div>
+  <div id="input-area">
+    <button id="mic">🎤</button>
+    <input id="input" placeholder="输入问题..." />
+    <button id="send">发送</button>
+  </div>
+
+  <script>
+    const chat = document.getElementById('chat');
+    const input = document.getElementById('input');
+    const sendBtn = document.getElementById('send');
+
+    function appendMessage(role, text) {
+      const row = document.createElement('div');
+      row.className = `row ${role}`;
+
+      const avatar = document.createElement('div');
+      avatar.className = `avatar ${role}`;
+
+      const bubble = document.createElement('div');
+      bubble.className = `bubble ${role}`;
+      bubble.textContent = text;
+
+      row.appendChild(avatar);
+      row.appendChild(bubble);
+
+      if (role === "assistant") {
+        const speakBtn = document.createElement('button');
+        speakBtn.className = "speak-btn";
+        speakBtn.textContent = "🔊";
+        speakBtn.onclick = () => {
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.lang = "zh-CN";
+          speechSynthesis.speak(utterance);
+        };
+        row.appendChild(speakBtn);
+      }
+
+      chat.appendChild(row);
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    async function sendMessage() {
+      const text = input.value.trim();
+      if (!text) return;
+      appendMessage("user", text);
+      input.value = "";
+
+      const messages = [
+        {"role": "system", "content": "你是一个简洁、靠谱的中文助理。"},
+        {"role": "user", "content": text}
+      ];
+
+      try {
+        const res = await fetch("http://127.0.0.1:8000/api/llm/chat", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({messages, max_tokens: 256, temperature: 0.7})
+        });
+        const data = await res.json();
+        appendMessage("assistant", data.text || "[无回复]");
+      } catch (err) {
+        appendMessage("assistant", "[请求失败]");
+        console.error(err);
+      }
+    }
+
+    sendBtn.onclick = sendMessage;
+    input.addEventListener("keydown", e => {
+      if (e.key === "Enter") sendMessage();
+    });
+
+    // 麦克风按钮：调用浏览器语音识别（Web Speech API）
+    const micBtn = document.getElementById('mic');
+    let recognition;
+    if ('webkitSpeechRecognition' in window) {
+      recognition = new webkitSpeechRecognition();
+      recognition.lang = "zh-CN";
+      recognition.onresult = event => {
+        const transcript = event.results[0][0].transcript;
+        input.value = transcript;
+      };
+    } else {
+      micBtn.disabled = true;
+    }
+    micBtn.onclick = () => {
+      if (recognition) recognition.start();
+    };
+  </script>
+</body>
+</html>

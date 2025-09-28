@@ -1,5 +1,10 @@
 ###### user config ###### 
 
+# llm
+llama.cpp
+llama.cpp/
+
+
 # Ignore PyCharm/IntelliJ project files
 .idea/
 *.iml

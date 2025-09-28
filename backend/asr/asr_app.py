@@ -148,7 +148,7 @@ class Session:
 # =========================
 # WebSocket 路由
 # =========================
-@app.websocket("/ws")
+@app.websocket("/ws_asr")
 async def ws_asr(ws: WebSocket):
     await ws.accept()
     sess = Session()
@@ -319,7 +319,7 @@ async def ws_asr(ws: WebSocket):
                         "text": final_text,
                         "segments": [{"start": s, "end": e, "text": t} for (s, e, t) in seg_ts],
                     }))
-                    asyncio.create_task(push_to_webhook(final_text))  # 不阻塞 ASR
+                    # asyncio.create_task(push_to_webhook(final_text))  # 不阻塞 ASR
                     sess.last_partial_text = ""  # final 后清空去抖
         except WebSocketDisconnect:
             pass
