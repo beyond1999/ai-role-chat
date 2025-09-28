@@ -1,5 +1,8 @@
 # AI Role Chat (MVP)
 
+### 演示视频地址：
+https://www.bilibili.com/video/BV1i1nZz8Ert/?spm_id_from=333.1387.homepage.video_card.click&vd_source=a2a1ad78786d36c0c9607eb4bfe43853
+
 **语音 → ASR → LLM → TTS 的实时数字人最小可用系统**
 
 - 前端：单页 HTML（选择人设：**孙悟空 / 哈利·波特 / 钢铁侠**，带头像与开场白）
