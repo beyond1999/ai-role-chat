@@ -128,38 +128,38 @@
     }
   }
 
-  // 修改：气泡上的“🔊”按钮绑定为调用 TTS_URL
-  function addMessage(role, text){
-    const row = document.createElement('div');
-    row.className = `row msg ${role}`;
+//   1// 修改：气泡上的“🔊”按钮绑定为调用 TTS_URL
+//   function addMessage(role, text){
+//     const row = document.createElement('div');
+//     row.className = `row msg ${role}`;
 
-    const avatar = document.createElement('div');
-    avatar.className = `avatar ${role}`;
-    if(role === 'assistant'){
-      const p = PERSONAS[currentPersonaKey];
-      avatar.textContent = p.avatar;
-    } else {
-      avatar.textContent = '我';
-    }
+//     const avatar = document.createElement('div');
+//     avatar.className = `avatar ${role}`;
+//     if(role === 'assistant'){
+//       const p = PERSONAS[currentPersonaKey];
+//       avatar.textContent = p.avatar;
+//     } else {
+//       avatar.textContent = '我';
+//     }
 
-    const bubble = document.createElement('div');
-    bubble.className = `bubble ${role}`;
-    bubble.textContent = text;
+//     const bubble = document.createElement('div');
+//     bubble.className = `bubble ${role}`;
+//     bubble.textContent = text;
 
-    row.appendChild(role==='user' ? bubble : avatar);
-    row.appendChild(role==='user' ? avatar : bubble);
+//     row.appendChild(role==='user' ? bubble : avatar);
+//     row.appendChild(role==='user' ? avatar : bubble);
 
-    if(role==='assistant'){
-      const tools = document.createElement('div'); tools.className='tools';
-      const speak = document.createElement('button'); speak.className='icon-btn'; speak.textContent='🔊';
-      speak.onclick = () => playTTS(text, currentPersonaKey);
-      tools.appendChild(speak); row.appendChild(tools);
-    }
+//     if(role==='assistant'){
+//       const tools = document.createElement('div'); tools.className='tools';
+//       const speak = document.createElement('button'); speak.className='icon-btn'; speak.textContent='🔊';
+//       speak.onclick = () => playTTS(text, currentPersonaKey);
+//       tools.appendChild(speak); row.appendChild(tools);
+//     }
 
-    chat.appendChild(row);
-    scrollToBottom();
-    saveHistory();
-  }
+//     chat.appendChild(row);
+//     scrollToBottom();
+//     saveHistory();
+//   }
 
 //   // 在 sendMessage() 里，收到 LLM 回复后，自动 TTS 一下（可选）
 //   async function sendMessage(){
@@ -184,37 +184,37 @@
 
 
 
-//   function addMessage(role, text){
-//     const row = document.createElement('div');
-//     row.className = `row msg ${role}`;
+  function addMessage(role, text){
+    const row = document.createElement('div');
+    row.className = `row msg ${role}`;
 
-//     const avatar = document.createElement('div');
-//     avatar.className = `avatar ${role}`;
-//     if(role === 'assistant'){
-//       const p = PERSONAS[currentPersonaKey];
-//       avatar.textContent = p.avatar;
-//     } else {
-//       avatar.textContent = '我';
-//     }
+    const avatar = document.createElement('div');
+    avatar.className = `avatar ${role}`;
+    if(role === 'assistant'){
+      const p = PERSONAS[currentPersonaKey];
+      avatar.textContent = p.avatar;
+    } else {
+      avatar.textContent = '我';
+    }
 
-//     const bubble = document.createElement('div');
-//     bubble.className = `bubble ${role}`;
-//     bubble.textContent = text;
+    const bubble = document.createElement('div');
+    bubble.className = `bubble ${role}`;
+    bubble.textContent = text;
 
-//     row.appendChild(role==='user' ? bubble : avatar);
-//     row.appendChild(role==='user' ? avatar : bubble);
+    row.appendChild(role==='user' ? bubble : avatar);
+    row.appendChild(role==='user' ? avatar : bubble);
 
-//     if(role==='assistant'){
-//       const tools = document.createElement('div'); tools.className='tools';
-//       const speak = document.createElement('button'); speak.className='icon-btn'; speak.textContent='🔊';
-//       speak.onclick = () => { const u = new SpeechSynthesisUtterance(text); u.lang='zh-CN'; speechSynthesis.speak(u); };
-//       tools.appendChild(speak); row.appendChild(tools);
-//     }
+    if(role==='assistant'){
+      const tools = document.createElement('div'); tools.className='tools';
+      const speak = document.createElement('button'); speak.className='icon-btn'; speak.textContent='🔊';
+      speak.onclick = () => { const u = new SpeechSynthesisUtterance(text); u.lang='zh-CN'; speechSynthesis.speak(u); };
+      tools.appendChild(speak); row.appendChild(tools);
+    }
 
-//     chat.appendChild(row);
-//     scrollToBottom();
-//     saveHistory();
-//   }
+    chat.appendChild(row);
+    scrollToBottom();
+    saveHistory();
+  }
 
   async function sendMessage(){
     const text = input.value.trim(); if(!text) return;
